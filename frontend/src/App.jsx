@@ -3,6 +3,7 @@ import ToDo from "./components/ToDo";
 import axios from "axios";
 import { baseURL } from "./utils/constant";
 import Popup from "./components/Popup";
+import { socketService } from "./utils/socketService";
 
 const App = () => {
   const [toDos, setToDos] = useState([]);
@@ -12,19 +13,49 @@ const App = () => {
   const [popupContent, setPopupContent] = useState({});
 
   useEffect(() => {
+    // Connect to WebSocket
+    socketService.connect();
+
+    // Listen for todo updates from other clients
+    socketService.onTodoUpdate(({ action, data }) => {
+      if (action === 'add') {
+        setToDos(prev => [...prev, data]);
+      } else if (action === 'delete') {
+        setToDos(prev => prev.filter(todo => todo._id !== data.id));
+      } else if (action === 'update') {
+        setToDos(prev => prev.map(todo => 
+          todo._id === data.id ? { ...todo, toDo: data.text } : todo
+        ));
+      }
+    });
+
+    // Fetch initial todos
+    fetchTodos();
+
+    // Cleanup on unmount
+    return () => {
+      socketService.disconnect();
+    };
+  }, []);
+
+  const fetchTodos = () => {
     axios
       .get(`${baseURL}/get`)
       .then((res) => setToDos(res.data))
       .catch((err) => console.log(err));
-  }, [updateUI]);
+  };
 
   const saveToDo = () => {
+    if (!input.trim()) return;
+
     axios
       .post(`${baseURL}/save`, { toDo: input })
       .then((res) => {
-        console.log(res.data);
-        setUpdateUI((prevState) => !prevState);
+        const newTodo = res.data;
+        setToDos(prev => [...prev, newTodo]);
         setInput("");
+        // Emit socket event for real-time update
+        socketService.emitTodoChange('add', newTodo);
       })
       .catch((err) => console.log(err));
   };
@@ -40,6 +71,7 @@ const App = () => {
             onChange={(e) => setInput(e.target.value)}
             type="text"
             placeholder="Add a ToDo..."
+            onKeyPress={(e) => e.key === 'Enter' && saveToDo()}
           />
           <button onClick={saveToDo}>Add</button>
         </div>
@@ -50,7 +82,7 @@ const App = () => {
               key={el._id}
               text={el.toDo}
               id={el._id}
-              setUpdateUI={setUpdateUI}
+              setToDos={setToDos}
               setShowPopup={setShowPopup}
               setPopupContent={setPopupContent}
             />
@@ -61,7 +93,7 @@ const App = () => {
         <Popup
           setShowPopup={setShowPopup}
           popupContent={popupContent}
-          setUpdateUI={setUpdateUI}
+          setToDos={setToDos}
         />
       )}
     </main>

@@ -3,12 +3,14 @@ import React from "react";
 import { AiFillEdit } from "react-icons/ai";
 import { RxCross1 } from "react-icons/rx";
 import { baseURL } from "../utils/constant";
+import { socketService } from "../utils/socketService";
 
-const ToDo = ({ text, id, setUpdateUI, setShowPopup, setPopupContent }) => {
+const ToDo = ({ text, id, setToDos, setShowPopup, setPopupContent }) => {
   const deleteTodo = () => {
     axios.delete(`${baseURL}/delete/${id}`).then((res) => {
-      console.log(res.data);
-      setUpdateUI((prevState) => !prevState);
+      setToDos(prev => prev.filter(todo => todo._id !== id));
+      // Emit socket event for real-time update
+      socketService.emitTodoChange('delete', { id });
     });
   };
 
